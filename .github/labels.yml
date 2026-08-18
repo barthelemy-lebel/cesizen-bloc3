@@ -1,0 +1,83 @@
+# ---------------------------------------------------------------------------
+# CESIZen - Référentiel de labels GitHub
+# Application : gh label create --file .github/labels.yml
+# Les labels portent la sémantique du plan de maintenance : ils permettent de
+# filtrer un backlog par sévérité, module ou statut sans outil supplémentaire.
+# ---------------------------------------------------------------------------
+
+# --- Nature du ticket ------------------------------------------------------
+- name: anomalie
+  color: "d73a4a"
+  description: "Dysfonctionnement - maintenance corrective"
+- name: evolution
+  color: "0075ca"
+  description: "Nouvelle fonctionnalité - maintenance évolutive"
+- name: incident
+  color: "b60205"
+  description: "Incident de production ou de sécurité en cours"
+- name: veille
+  color: "5319e7"
+  description: "Issue de la veille technologique ou sécurité"
+- name: dependances
+  color: "c5def5"
+  description: "Montée de version de dépendances"
+- name: documentation
+  color: "0e8a16"
+  description: "Documentation technique ou utilisateur"
+
+# --- Sévérité (déclenche le SLA) -------------------------------------------
+- name: "severite:bloquant"
+  color: "b60205"
+  description: "Service inutilisable, aucun contournement"
+- name: "severite:majeur"
+  color: "d93f0b"
+  description: "Service inopérant par intermittence ou via contournement"
+- name: "severite:mineur"
+  color: "fbca04"
+  description: "Altération de la qualité de service, service opérationnel"
+
+# --- Priorité --------------------------------------------------------------
+- name: "priorite:critique"
+  color: "b60205"
+  description: "Prise en compte 1 h ouvrée, correction 3 h ouvrées"
+- name: "priorite:forte"
+  color: "d93f0b"
+  description: "Prise en compte 2 h ouvrées, correction 6 h ouvrées"
+- name: "priorite:normale"
+  color: "fbca04"
+- name: "priorite:basse"
+  color: "c2e0c6"
+
+# --- Modules fonctionnels --------------------------------------------------
+- name: "module:comptes"
+  color: "1d76db"
+  description: "Comptes utilisateurs et authentification"
+- name: "module:informations"
+  color: "1d76db"
+  description: "Pages et contenus d'information"
+- name: "module:tracker"
+  color: "1d76db"
+  description: "Tracker d'émotions"
+- name: "module:infrastructure"
+  color: "5319e7"
+  description: "Déploiement, CI/CD, hébergement"
+
+# --- Cycle de vie ----------------------------------------------------------
+- name: a-qualifier
+  color: "ededed"
+  description: "En attente d'analyse et de qualification"
+- name: a-chiffrer
+  color: "ededed"
+  description: "Évolution en attente de chiffrage"
+- name: en-attente-client
+  color: "fef2c0"
+  description: "Bloqué : validation ou information attendue du Ministère"
+- name: securite
+  color: "b60205"
+  description: "Concerne la sécurité de l'application ou des données"
+- name: rgpd
+  color: "006b75"
+  description: "Impact sur les données personnelles"
+- name: confidentiel
+  color: "000000"
+  description: "Diffusion restreinte : ne pas commenter publiquement"

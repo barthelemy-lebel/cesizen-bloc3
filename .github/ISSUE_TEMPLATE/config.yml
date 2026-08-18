@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "Signalement confidentiel de vulnérabilité"
+    url: https://github.com/barthelemy-lebel/cesizen/security/advisories/new
+    about: "Pour toute faille non publique : divulgation coordonnée, sans exposition préalable."
+  - name: "Support utilisateur (grand public)"
+    url: https://cesizen.fr/contact
+    about: "Les utilisateurs finaux passent par le formulaire de contact, pas par GitHub."

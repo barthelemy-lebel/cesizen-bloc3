@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# CESIZen - Middlewares Traefik (configuration dynamique, rechargée à chaud)
+# ---------------------------------------------------------------------------
+http:
+  middlewares:
+
+    # En-têtes de sécurité HTTP - couvre A05:2021 Security Misconfiguration
+    secure-headers:
+      headers:
+        stsSeconds: 31536000              # HSTS 1 an
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        frameDeny: true                   # anti clickjacking
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "geolocation=(), microphone=(), camera=()"
+        customResponseHeaders:
+          Server: ""                      # masque la bannière serveur
+          X-Powered-By: ""
+
+    # Limitation de débit globale sur l'API
+    api-ratelimit:
+      rateLimit:
+        average: 100                      # 100 req/s en moyenne par IP
+        burst: 50
+        period: 1s
+
+    # Limitation stricte sur les routes d'authentification (anti brute-force),
+    # à appliquer via un router dédié /api/auth/
+    auth-ratelimit:
+      rateLimit:
+        average: 5
+        burst: 10
+        period: 1m

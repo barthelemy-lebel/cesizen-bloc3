@@ -1,0 +1,102 @@
+name: "Anomalie (maintenance corrective)"
+description: "Signaler un dysfonctionnement de l'application CESIZen"
+title: "[BUG] "
+labels: ["anomalie", "a-qualifier"]
+projects: ["barthelemy-lebel/CESIZen - Pilotage"]
+body:
+
+  - type: markdown
+    attributes:
+      value: |
+        Merci de renseigner ce formulaire le plus précisément possible.
+        La sévérité déclenche automatiquement un engagement de délai (SLA) :
+
+        | Sévérité | Prise en compte | Correction |
+        |---|---|---|
+        | Bloquant – priorité critique | 1 h ouvrée | 3 h ouvrées |
+        | Bloquant – priorité forte | 2 h ouvrées | 6 h ouvrées |
+        | Majeur | 7 h ouvrées | 16 h ouvrées |
+        | Mineur (traité par lots) | 1 j ouvré | 40 h ouvrées |
+
+  - type: dropdown
+    id: severite
+    attributes:
+      label: Sévérité
+      description: |
+        **Bloquant** : service inutilisable, aucun contournement possible.
+        **Majeur** : service inopérant par intermittence ou via contournement.
+        **Mineur** : simple altération de la qualité de service.
+      options:
+        - "Bloquant - priorité critique"
+        - "Bloquant - priorité forte"
+        - "Majeur"
+        - "Mineur"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environnement
+    attributes:
+      label: Environnement concerné
+      options: ["Production", "Recette", "Développement"]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module fonctionnel
+      options:
+        - "Comptes utilisateurs"
+        - "Informations"
+        - "Tracker d'émotions"
+        - "Infrastructure / déploiement"
+        - "Autre"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description du dysfonctionnement
+      placeholder: "Ce qui se produit, et en quoi cela diffère du comportement attendu."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Étapes de reproduction
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: attendu
+    attributes:
+      label: Résultat attendu
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version de l'application
+      placeholder: "v1.3.2 (visible dans Profil > À propos)"
+
+  - type: textarea
+    id: contexte
+    attributes:
+      label: Contexte technique
+      placeholder: "Appareil, système, navigateur, horodatage de l'incident."
+
+  - type: checkboxes
+    id: rgpd
+    attributes:
+      label: Protection des données
+      options:
+        - label: "Je confirme que ce ticket ne contient aucune donnée personnelle réelle (email, mot de passe, contenu du journal d'émotions d'un utilisateur)."
+          required: true

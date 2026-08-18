@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# CESIZen - Environnement de DÉVELOPPEMENT local
+# Usage : docker compose up -d
+# ---------------------------------------------------------------------------
+
+services:
+
+  db:
+    image: postgres:16-alpine
+    container_name: cesizen-db-dev
+    environment:
+      POSTGRES_DB: cesizen_dev
+      POSTGRES_USER: cesizen
+      POSTGRES_PASSWORD: devpassword          # dev uniquement, jamais en prod
+    ports:
+      - "127.0.0.1:5432:5432"                 # exposé en local seulement
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cesizen -d cesizen_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../deploy/Dockerfile
+      target: runtime
+    container_name: cesizen-api-dev
+    command: python manage.py runserver 0.0.0.0:8000
+    environment:
+      DJANGO_SETTINGS_MODULE: cesizen.settings.development
+      DATABASE_URL: postgres://cesizen:devpassword@db:5432/cesizen_dev
+      SECRET_KEY: dev-secret-not-for-production
+      DEBUG: "True"
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      EMAIL_HOST: mailhog
+      EMAIL_PORT: "1025"
+    volumes:
+      - ../backend:/app                       # hot reload du code
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  mailhog:
+    # Capture les emails (vérification de compte, reset mot de passe)
+    # sans jamais écrire à une vraie adresse depuis un poste de dev.
+    image: mailhog/mailhog:latest
+    container_name: cesizen-mail-dev
+    ports:
+      - "8025:8025"                           # interface web
+      - "1025:1025"                           # SMTP
+
+volumes:
+  pgdata_dev:

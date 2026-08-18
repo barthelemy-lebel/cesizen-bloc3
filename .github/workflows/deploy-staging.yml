@@ -1,0 +1,199 @@
+# ---------------------------------------------------------------------------
+# CESIZen - Déploiement continu vers l'environnement de TEST (recette)
+#
+# Déclenchement : tout merge sur develop.
+# Objectif : donner au Ministère un environnement toujours à jour pour la
+# recette fonctionnelle, sans intervention manuelle.
+#
+# INTERRUPTEUR DE DÉPLOIEMENT
+# Les travaux qui écrivent sur une infrastructure réelle sont conditionnés à la
+# variable de dépôt DEPLOY_ENABLED (Settings > Secrets and variables > Actions >
+# Variables). Tant qu'elle ne vaut pas « true », le travail de démonstration
+# s'exécute à la place : il vérifie la configuration et déroule la séquence sans
+# rien déployer. Cela évite qu'un dépôt dépourvu de secrets d'infrastructure
+# affiche des exécutions en échec.
+# ---------------------------------------------------------------------------
+name: Déploiement Recette
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:        # relance manuelle possible depuis l'onglet Actions
+
+concurrency:
+  group: deploy-staging     # un seul déploiement à la fois sur l'environnement
+  cancel-in-progress: false
+
+jobs:
+
+  build:
+    name: Build et publication de l'image
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Calculer le tag d'image
+        id: meta
+        # Tag = SHA court du commit : chaque déploiement est traçable
+        # jusqu'à la ligne de code exacte qui tourne en recette.
+        run: echo "tag=staging-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Authentification au registre GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build et push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./deploy/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/cesizen-api:${{ steps.meta.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/cesizen-api:staging
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Déploiement sur le VPS de recette
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: recette
+      url: https://recette.cesizen.fr
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Déploiement SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: deploy
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -e
+            cd /srv/cesizen
+
+            # 1. Sauvegarde avant migration : filet de sécurité du rollback
+            docker compose -f docker-compose.prod.yml exec -T db \
+              pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
+              | gzip > "/srv/backups/pre-deploy-$(date +%Y%m%d-%H%M%S).sql.gz"
+
+            # 2. Récupération de la nouvelle image
+            echo "IMAGE_TAG=${{ needs.build.outputs.image_tag }}" > .env.image
+            docker compose -f docker-compose.prod.yml --env-file .env --env-file .env.image pull backend
+
+            # 3. Migrations de base de données
+            docker compose -f docker-compose.prod.yml --env-file .env --env-file .env.image \
+              run --rm backend python manage.py migrate --noinput
+
+            # 4. Bascule applicative
+            docker compose -f docker-compose.prod.yml --env-file .env --env-file .env.image \
+              up -d --no-deps backend
+
+            # 5. Nettoyage des images orphelines
+            docker image prune -f
+
+      - name: Vérification post-déploiement (smoke test)
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://recette.cesizen.fr/api/health/)
+            if [ "$code" = "200" ]; then
+              echo "Environnement de recette opérationnel."
+              exit 0
+            fi
+            echo "Tentative $i : HTTP $code, nouvelle vérification dans 10 s"
+            sleep 10
+          done
+          echo "L'application ne répond pas après déploiement."
+          exit 1
+
+      - name: Notifier l'échec au canal projet
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            -d '{"text":"Déploiement recette CESIZen en échec - commit ${{ github.sha }}"}' \
+            "${{ secrets.TEAMS_WEBHOOK_URL }}"
+
+  # --------------------------------------------------------------------
+  # Mode démonstration : exécuté lorsque aucune infrastructure n'est reliée
+  # --------------------------------------------------------------------
+  simulation:
+    name: Déploiement recette (mode démonstration)
+    if: vars.DEPLOY_ENABLED != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Contrôle réel : la composition de production doit être valide,
+      # indépendamment de l'existence d'un serveur cible.
+      - name: Valider la composition de production
+        run: |
+          cp deploy/.env.example /tmp/.env
+          docker compose --env-file /tmp/.env \
+            -f deploy/docker-compose.prod.yml config --quiet
+          echo "Composition valide : services, réseaux et volumes correctement déclarés."
+
+      - name: Vérifier le cloisonnement réseau
+        run: |
+          grep -A3 '^  internal:' deploy/docker-compose.prod.yml \
+            | grep -q 'internal: true' \
+          && echo "Le réseau interne est bien déclaré sans route vers Internet." \
+          || { echo "Le réseau interne n'est plus cloisonné."; exit 1; }
+
+      - name: Vérifier qu'aucun port de base de données n'est publié
+        run: |
+          if grep -qE '^\s+- "?[0-9]+:5432' deploy/docker-compose.prod.yml; then
+            echo "PostgreSQL expose un port sur l'hôte : configuration refusée."
+            exit 1
+          fi
+          echo "Aucun port PostgreSQL publié : la base reste inatteignable depuis Internet."
+
+      - name: Séquence de déploiement qui serait exécutée
+        run: |
+          cat <<SEQUENCE
+          Environnement cible : recette.cesizen.fr
+          Image           : ghcr.io/<propriétaire>/cesizen-api:staging-${GITHUB_SHA::7}
+
+            1. Construction de l'image et publication au registre GHCR
+            2. Sauvegarde de la base de recette (pg_dump compressé)
+            3. docker compose pull backend
+            4. manage.py migrate --noinput
+            5. docker compose up -d --no-deps backend
+            6. Vérification de /api/health/ (10 tentatives, 10 s d'intervalle)
+            7. Notification du canal projet en cas d'échec
+
+          Pour exécuter réellement cette séquence :
+            - définir la variable de dépôt DEPLOY_ENABLED = true
+            - renseigner les secrets STAGING_HOST et STAGING_SSH_KEY
+          SEQUENCE
+
+      - name: Résumé de l'exécution
+        run: |
+          {
+            echo "### Déploiement recette — mode démonstration"
+            echo ""
+            echo "Aucune infrastructure n'est reliée à ce dépôt : les travaux de"
+            echo "déploiement sont volontairement inactifs."
+            echo ""
+            echo "| Contrôle | Résultat |"
+            echo "|---|---|"
+            echo "| Composition de production valide | OK |"
+            echo "| Réseau interne cloisonné | OK |"
+            echo "| Aucun port PostgreSQL publié | OK |"
+          } >> "$GITHUB_STEP_SUMMARY"

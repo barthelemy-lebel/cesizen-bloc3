@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# CESIZen - Mise à jour automatisée des dépendances
+# Volet automatisé de la veille technologique : Dependabot ouvre les PR,
+# la CI les valide, le prestataire arbitre la fusion.
+# ---------------------------------------------------------------------------
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependances", "maintenance"]
+    groups:
+      # Regroupe les montées de version mineures : moins de PR à traiter,
+      # les majeures restent isolées car elles demandent un vrai arbitrage.
+      mineures-et-correctifs:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: /mobile
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependances", "maintenance", "mobile"]
+    groups:
+      mineures-et-correctifs:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule:
+      interval: monthly
+    labels: ["dependances", "infrastructure"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: ["dependances", "ci"]

@@ -1,0 +1,80 @@
+# ---------------------------------------------------------------------------
+# CESIZen - Veille de sécurité automatisée
+#
+# Une analyse hebdomadaire indépendante des développements : une dépendance
+# saine au moment du merge peut devenir vulnérable la semaine suivante.
+# ---------------------------------------------------------------------------
+name: Veille sécurité hebdomadaire
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"     # tous les lundis à 06h00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+
+jobs:
+
+  audit:
+    name: Audit des dépendances et de l'image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: pip-audit
+        id: pipaudit
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt --format markdown > audit-python.md
+
+      - name: Scan de l'image de production
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/cesizen-api:latest
+          format: table
+          output: audit-image.txt
+          severity: MEDIUM,HIGH,CRITICAL
+
+      # Le résultat devient un ticket : la veille alimente le backlog,
+      # elle ne reste pas un rapport que personne ne lit.
+      - name: Créer le ticket de veille hebdomadaire
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const read = f => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').slice(0, 30000) : '_Aucun résultat._';
+            const semaine = new Date().toISOString().slice(0, 10);
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[VEILLE] Audit de sécurité du ${semaine}`,
+              labels: ['veille', 'securite'],
+              body: `## Dépendances Python\n\n${read('audit-python.md')}\n\n`
+                  + `## Image de production\n\n\`\`\`\n${read('audit-image.txt')}\n\`\`\`\n\n`
+                  + `### Traitement attendu\n`
+                  + `- Vulnérabilité **critique ou élevée** : ticket dédié, correction sous 72 h.\n`
+                  + `- Vulnérabilité **moyenne ou faible** : intégration au lot de maintenance mensuel.\n`
+                  + `- Aucune vulnérabilité : clôturer ce ticket en le commentant (traçabilité de la veille).`
+            });
+
+  codeql:
+    name: Analyse statique CodeQL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python, javascript
+          queries: security-extended
+
+      - uses: github/codeql-action/analyze@v3

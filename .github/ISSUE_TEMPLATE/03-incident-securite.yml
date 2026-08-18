@@ -1,0 +1,97 @@
+name: "Incident de sécurité"
+description: "Déclarer une faille, une attaque ou une suspicion de violation de données"
+title: "[SECURITE] "
+labels: ["incident", "securite", "confidentiel"]
+assignees: ["barthelemy-lebel"]
+body:
+
+  - type: markdown
+    attributes:
+      value: |
+        > **Vulnérabilité non encore exploitée ?**
+        > Ne la décrivez pas publiquement ici : utilisez l'avis de sécurité privé
+        > (onglet *Security > Report a vulnerability*) pour éviter toute
+        > divulgation avant correction.
+
+        **Rappel réglementaire** : une violation de données à caractère personnel
+        doit être notifiée à la CNIL dans les **72 heures** suivant sa découverte
+        (RGPD art. 33). L'horodatage ci-dessous fait courir ce délai.
+
+  - type: input
+    id: detection
+    attributes:
+      label: Date et heure de détection (UTC)
+      placeholder: "2026-08-18 14:32"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: niveau
+    attributes:
+      label: Niveau d'escalade estimé
+      description: |
+        **N1** : événement suspect, sans impact avéré (traité par l'astreinte technique).
+        **N2** : incident confirmé, service ou intégrité affectés (chef de projet mobilisé).
+        **N3** : violation de données personnelles avérée ou probable (cellule de crise, DPO, CNIL).
+      options:
+        - "N1 - Événement suspect"
+        - "N2 - Incident confirmé"
+        - "N3 - Violation de données personnelles"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: nature
+    attributes:
+      label: Nature de l'incident
+      multiple: true
+      options:
+        - "Accès non autorisé / compromission de compte"
+        - "Injection (SQL, commande, template)"
+        - "Cross-Site Scripting (XSS)"
+        - "Déni de service"
+        - "Fuite ou exposition de données"
+        - "Compromission de la chaîne d'approvisionnement (dépendance, image)"
+        - "Secret exposé (clé, token, mot de passe)"
+        - "Autre"
+    validations:
+      required: true
+
+  - type: textarea
+    id: constat
+    attributes:
+      label: Constat
+      placeholder: "Ce qui a été observé, et par quel moyen (alerte Sentry, logs Traefik, signalement externe...)."
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact estimé
+      placeholder: |
+        - Services affectés :
+        - Nombre d'utilisateurs potentiellement concernés :
+        - Catégories de données exposées (dont données de santé) :
+    validations:
+      required: true
+
+  - type: textarea
+    id: confinement
+    attributes:
+      label: Mesures de confinement déjà prises
+      placeholder: "Blocage d'IP, révocation de tokens, isolement du conteneur, rotation de secrets..."
+
+  - type: checkboxes
+    id: actions
+    attributes:
+      label: Chaîne d'actions (à cocher au fil du traitement)
+      options:
+        - label: "Incident qualifié et niveau d'escalade confirmé"
+        - label: "Confinement effectué (propagation stoppée)"
+        - label: "Preuves collectées et conservées (logs, images disque)"
+        - label: "DPO informé (obligatoire à partir du niveau N2)"
+        - label: "Notification CNIL évaluée et tracée (obligatoire en N3, sous 72 h)"
+        - label: "Personnes concernées informées si risque élevé (RGPD art. 34)"
+        - label: "Correctif déployé et vérifié"
+        - label: "Retour d'expérience rédigé et actions préventives créées"

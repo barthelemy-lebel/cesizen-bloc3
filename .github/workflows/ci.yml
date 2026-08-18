@@ -1,0 +1,287 @@
+# ---------------------------------------------------------------------------
+# CESIZen - Intégration continue
+#
+# Se déclenche sur toute PR vers develop/main et sur tout push de branche.
+# Aucune PR ne peut être fusionnée si un travail échoue (branch protection).
+#
+# Le dépôt peut ne contenir que l'infrastructure (avant intégration du
+# prototype) ou l'application complète. Un travail de détection conditionne
+# donc les contrôles applicatifs : ils s'exécutent dès que le code existe, et
+# sont ignorés sinon — sans jamais produire d'exécution en échec.
+# ---------------------------------------------------------------------------
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+
+  # ------------------------------------------------------------------
+  # 0. Détection du contenu du dépôt
+  # ------------------------------------------------------------------
+  detection:
+    name: Détection des composants
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.detect.outputs.backend }}
+      mobile: ${{ steps.detect.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: detect
+        name: Identifier les composants présents
+        run: |
+          backend=false
+          mobile=false
+          if [ -f backend/manage.py ];   then backend=true; fi
+          if [ -f mobile/package.json ]; then mobile=true;  fi
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "mobile=$mobile"   >> "$GITHUB_OUTPUT"
+          {
+            echo "### Composants détectés"
+            echo ""
+            echo "| Composant | Présent | Contrôles associés |"
+            echo "|---|---|---|"
+            echo "| Backend Django (\`backend/\`) | $backend | qualité, tests, sécurité |"
+            echo "| Application mobile (\`mobile/\`) | $mobile | lint, tests Jest, audit npm |"
+            echo "| Infrastructure (\`deploy/\`, \`.github/\`) | true | invariants de sécurité |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ------------------------------------------------------------------
+  # 1. Invariants d'infrastructure - toujours exécuté
+  # ------------------------------------------------------------------
+  infrastructure:
+    name: Invariants d'infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Installer les dépendances de contrôle
+        run: pip install pyyaml
+
+      # Vérifie que les décisions de sécurité du plan de sécurisation sont
+      # toujours respectées : cloisonnement réseau, absence de port exposé,
+      # durcissement du conteneur, en-têtes HTTP, absence de secret en clair.
+      - name: Contrôler les invariants
+        run: python3 .github/scripts/validate_infra.py
+
+      - name: Vérifier la syntaxe des scripts d'exploitation
+        run: |
+          for script in deploy/scripts/*.sh; do
+            sh -n "$script" && echo "Syntaxe correcte : $script"
+          done
+
+      - name: Analyse statique des scripts (shellcheck)
+        run: |
+          # Niveau « error » uniquement : les avertissements de style ne
+          # doivent pas bloquer une livraison corrective urgente.
+          shellcheck --severity=error deploy/scripts/*.sh \
+            && echo "Aucune erreur détectée par shellcheck."
+
+      - name: Valider les compositions Docker
+        run: |
+          cp deploy/.env.example /tmp/.env
+          docker compose --env-file /tmp/.env \
+            -f deploy/docker-compose.prod.yml config --quiet
+          echo "Composition de production valide."
+
+  # ------------------------------------------------------------------
+  # 2. Qualité de code - échoue vite, avant de dépenser du temps de test
+  # ------------------------------------------------------------------
+  lint:
+    name: Qualité de code
+    runs-on: ubuntu-latest
+    needs: detection
+    if: needs.detection.outputs.backend == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Installer les outils de qualité
+        run: pip install ruff black
+
+      - name: Ruff (lint + imports)
+        run: ruff check backend/
+
+      - name: Black (formatage)
+        run: black --check backend/
+
+  # ------------------------------------------------------------------
+  # 3. Tests unitaires et d'intégration + seuil de couverture
+  # ------------------------------------------------------------------
+  tests:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+    needs: [detection, lint]
+    if: needs.detection.outputs.backend == 'true'
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cesizen_test
+          POSTGRES_USER: cesizen
+          POSTGRES_PASSWORD: testpassword
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cesizen"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://cesizen:testpassword@localhost:5432/cesizen_test
+      SECRET_KEY: ci-secret-key
+      DJANGO_SETTINGS_MODULE: cesizen.settings.test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Installer les dépendances
+        run: |
+          pip install -r backend/requirements.txt
+          if [ -f backend/requirements-dev.txt ]; then
+            pip install -r backend/requirements-dev.txt
+          fi
+          pip install pytest pytest-django pytest-cov
+
+      - name: Vérifier l'absence de migration manquante
+        working-directory: backend
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Tests unitaires et fonctionnels
+        working-directory: backend
+        run: |
+          pytest \
+            --cov=. \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=70 \
+            --junitxml=junit.xml
+
+      # Le rapport reste consultable dans l'onglet Actions : c'est la preuve
+      # de non-régression exigée avant toute livraison.
+      - name: Publier le rapport de tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-tests
+          path: |
+            backend/junit.xml
+            backend/coverage.xml
+
+  # ------------------------------------------------------------------
+  # 4. Analyse de sécurité - SAST et dépendances vulnérables
+  # ------------------------------------------------------------------
+  securite:
+    name: Analyse de sécurité
+    runs-on: ubuntu-latest
+    needs: [detection, lint]
+    if: needs.detection.outputs.backend == 'true'
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Installer les outils
+        run: pip install bandit pip-audit
+
+      # Bandit : détection de patterns dangereux dans le code Python
+      - name: Bandit (SAST)
+        run: bandit -r backend/ -ll -x backend/tests
+
+      # pip-audit : CVE connues dans les dépendances (A06:2021)
+      - name: pip-audit (dépendances)
+        run: pip-audit -r backend/requirements.txt
+
+      # Vérifications de configuration Django propres à la production
+      - name: Django security check
+        working-directory: backend
+        env:
+          SECRET_KEY: ci-secret-key
+          DATABASE_URL: postgres://ci/ci
+          DJANGO_SETTINGS_MODULE: cesizen.settings.production
+          ALLOWED_HOSTS: cesizen.fr
+        run: python manage.py check --deploy --fail-level WARNING
+
+      # Trivy : vulnérabilités de l'image Docker (OS + librairies)
+      - name: Construire l'image
+        run: docker build -f deploy/Dockerfile -t cesizen-api:ci backend/
+
+      - name: Trivy (scan de l'image)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cesizen-api:ci
+          format: sarif
+          output: trivy.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      - name: Remonter les résultats dans l'onglet Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+
+  # ------------------------------------------------------------------
+  # 5. Application mobile Expo React Native
+  # ------------------------------------------------------------------
+  mobile:
+    name: Tests mobile (Expo)
+    runs-on: ubuntu-latest
+    needs: detection
+    if: needs.detection.outputs.mobile == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Installer les dépendances
+        working-directory: mobile
+        run: npm ci
+
+      - name: Lint
+        working-directory: mobile
+        run: npm run lint
+
+      - name: Tests Jest
+        working-directory: mobile
+        run: npm test -- --ci --coverage
+
+      - name: Audit des dépendances npm
+        working-directory: mobile
+        run: npm audit --audit-level=high

@@ -1,0 +1,57 @@
+name: "Évolution (maintenance évolutive)"
+description: "Demander une nouvelle fonctionnalité ou une amélioration"
+title: "[EVOL] "
+labels: ["evolution", "a-chiffrer"]
+projects: ["barthelemy-lebel/CESIZen - Pilotage"]
+body:
+
+  - type: markdown
+    attributes:
+      value: |
+        Toute demande d'évolution fait l'objet d'une analyse par le prestataire,
+        aboutissant à une proposition chiffrée (documentation, délai, coût)
+        soumise à validation du Ministère avant réalisation.
+
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Besoin exprimé
+      placeholder: "En tant que <acteur>, je souhaite <action> afin de <bénéfice>."
+    validations:
+      required: true
+
+  - type: textarea
+    id: justification
+    attributes:
+      label: Justification / valeur attendue
+      placeholder: "Utilisateurs concernés, gain mesurable, obligation réglementaire..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priorite
+    attributes:
+      label: Priorité souhaitée (MoSCoW)
+      options:
+        - "Must have - indispensable"
+        - "Should have - important"
+        - "Could have - souhaitable"
+        - "Won't have - à replanifier"
+    validations:
+      required: true
+
+  - type: textarea
+    id: criteres
+    attributes:
+      label: Critères d'acceptation
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: input
+    id: echeance
+    attributes:
+      label: Échéance souhaitée
+      placeholder: "T3 2026, ou date contrainte (campagne de prévention, obligation légale...)"

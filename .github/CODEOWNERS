@@ -1,0 +1,8 @@
+# Toute modification est relue par le responsable technique du projet.
+*                       @barthelemy-lebel
+
+# Les fichiers sensibles font l'objet d'une vigilance renforcée :
+# une erreur y a un impact direct sur la sécurité ou la disponibilité.
+/deploy/                @barthelemy-lebel
+/.github/workflows/     @barthelemy-lebel
+/backend/cesizen/settings/ @barthelemy-lebel
