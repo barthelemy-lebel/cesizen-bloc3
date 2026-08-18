@@ -239,7 +239,7 @@ jobs:
         run: docker build -f deploy/Dockerfile -t cesizen-api:ci backend/
 
       - name: Trivy (scan de l'image)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: cesizen-api:ci
           format: sarif
