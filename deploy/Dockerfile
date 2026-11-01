@@ -4,7 +4,7 @@
 # ---------------------------------------------------------------------------
 
 # --------- Stage 1 : construction des dépendances --------------------------
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.15-slim-bookworm AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -23,7 +23,7 @@ RUN python -m venv /opt/venv \
 
 
 # --------- Stage 2 : image d'exécution -------------------------------------
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.15-slim-bookworm AS runtime
 
 # Bonnes pratiques Python en conteneur : pas de .pyc, logs non bufferisés
 ENV PYTHONDONTWRITEBYTECODE=1 \
